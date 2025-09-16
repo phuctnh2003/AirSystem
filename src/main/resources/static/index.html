@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang Đo Chất Lượng Không Khí</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+</head>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #74ebd5, #ACB6E5);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: #2c3e50;
+            height: 100vh;
+        }
+
+        h1 {
+            color: #ffffff;
+            font-size: 40px;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-container {
+            display: flex;
+            justify-content: space-around;
+            width: 80%;
+            margin-top: 20px;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .card {
+            background: #ffffff;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            width: 250px;
+            transition: all 0.3s ease-in-out;
+        }
+
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h3 {
+            color: #2980b9;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .card p {
+            font-size: 18px;
+            color: #34495e;
+            margin-bottom: 10px;
+        }
+
+        .log-container {
+    margin-top: 20px;
+    width: 80%; /* Chiều rộng lớn hơn cho khung log */
+    background: #ffffff;
+    padding: 30px; /* Tăng padding để dễ nhìn */
+    border-radius: 16px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    text-align: center;
+    color: #34495e;
+    overflow-y: auto; /* Cuộn nếu nội dung quá dài */
+    max-height: 400px; /* Tăng chiều cao tối đa */
+    font-size: 20px; /* Tăng kích thước chữ */
+}
+
+.log-container h3 {
+    margin-top: 0;
+    font-size: 28px; /* Tăng kích thước tiêu đề */
+    color: #2980b9;
+}
+
+.log-container ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: 18px; /* Đồng bộ kích thước chữ với phần log */
+    text-align: left; /* Căn trái để dễ đọc */
+    line-height: 1.8; /* Giãn dòng */
+}
+
+
+.log-container ul li {
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+
+
+        .footer {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #34495e;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Hệ Thống Đo Chất Lượng Không Khí</h1>
+
+<div class="card-container">
+    <div class="card">
+        <h3><i class="fas fa-thermometer-half"></i> Nhiệt Độ</h3>
+        <p id="temperature">Đang tải...</p>
+    </div>
+
+    <div class="card">
+        <h3><i class="fas fa-tint"></i> Độ Ẩm</h3>
+        <p id="humidity">Đang tải...</p>
+    </div>
+
+    <div class="card">
+        <h3><i class="fas fa-smog"></i> Chất Lượng Không Khí</h3>
+        <p id="airquality">Đang tải...</p>
+    </div>
+</div>
+
+
+<div class="log-container">
+    <h3>Nhật Ký Hệ Thống</h3>
+    <ul id="log-list">
+        <!-- Logs sẽ được thêm vào đây -->
+    </ul>
+</div>
+
+<div class="footer">
+    <p>© 2024 Hệ Thống Giám Sát Chất Lượng Không Khí</p>
+</div>
+
+<script>
+    let mqttClient;
+
+    function connectToBroker() {
+        const clientId = "client-" + Math.random().toString(36).substr(2, 9);
+        const host = "wss://server.vohoangnam.id.vn:2006";
+
+        const options = {
+            clientId,
+            protocolId: "MQTT",
+            protocolVersion: 5,
+            clean: true,
+            reconnectPeriod: 1000,
+            connectTimeout: 30 * 1000,
+            username: "neosoftmqtt",
+            password: "Learning2009!",
+            keepalive: 60
+        };
+
+        mqttClient = mqtt.connect(host, options);
+
+        mqttClient.on("connect", () => {
+            console.log("Kết nối thành công tới broker: " + clientId);
+            mqttClient.subscribe("sensor/temperature");
+            mqttClient.subscribe("sensor/humidity");
+            mqttClient.subscribe("sensor/airquality");
+        });
+
+       mqttClient.on("message", (topic, message) => {
+    const value = message.toString();
+    console.log(`Nhận dữ liệu từ ${topic}: ${value}`);
+
+    if (topic === "sensor/temperature") {
+        const tempElem = document.getElementById("temperature");
+        tempElem.textContent = `${value}°C`;
+
+        // Kiểm tra ngưỡng nhiệt độ
+        if (parseFloat(value) > 32) {
+            tempElem.style.color = "red";
+        } else {
+            tempElem.style.color = "#34495e"; // Màu mặc định
+        }
+    } else if (topic === "sensor/humidity") {
+        const humidityElem = document.getElementById("humidity");
+        humidityElem.textContent = `${value}%`;
+
+        // Kiểm tra ngưỡng độ ẩm
+        if (parseFloat(value) > 70) {
+            humidityElem.style.color = "red";
+        } else {
+            humidityElem.style.color = "#34495e"; // Màu mặc định
+        }
+    } else if (topic === "sensor/airquality") {
+        const airQualityElem = document.getElementById("airquality");
+        let airQualityValue = value.split(' ')[0];  // Lấy phần trăm từ chuỗi (ví dụ: "43 %")
+        airQualityValue = parseFloat(airQualityValue);  // Chuyển sang số thực
+
+        let airQualityStatus;
+        if (airQualityValue < 50) {
+            airQualityStatus = "Tốt";
+            airQualityElem.style.color = "#34495e"; // Màu mặc định
+        } else if (airQualityValue >= 50 && airQualityValue <= 70) {
+            airQualityStatus = "Bình thường";
+            airQualityElem.style.color = "#34495e"; // Màu mặc định
+        } else {
+            airQualityStatus = "Xấu";
+            airQualityElem.style.color = "red"; // Màu đỏ khi xấu
+        }
+airQualityElem.textContent = `${airQualityValue} % (${airQualityStatus})`;
+
+    }
+});
+
+
+        mqttClient.on("error", (err) => console.error("Lỗi MQTT:", err.message));
+    }
+
+    function fetchLogs() {
+    const logList = document.getElementById("log-list");
+    fetch("https://javaserver.vohoangnam.id.vn/air_system/read_log")
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("Network response was not ok");
+            }
+            return response.text();
+        })
+        .then(data => {
+            logList.innerHTML = ""; // Clear current logs
+            const logs = data.split("\n");
+            logs.slice(-50).forEach(log => { // Chỉ lấy 50 log mới nhất
+                if (log.trim()) {
+                    const logEntry = document.createElement("li");
+                    logEntry.textContent = log.trim();
+                    logList.prepend(logEntry); // Add new logs at the top
+                }
+            });
+        })
+        .catch(error => {
+            console.error("Lỗi khi đọc log:", error);
+        });
+}
+
+
+    function init() {
+        connectToBroker();
+        fetchLogs();
+        setInterval(fetchLogs, 10000); // Cập nhật log mỗi 10 giây
+    }
+
+    init();
+</script>
+
+</body>
+</html>
